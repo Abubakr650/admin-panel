@@ -4,12 +4,20 @@ namespace App\Http\Controllers\Radiology;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use HosseinHezami\LaravelGemini\Facades\Gemini;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Clinic\Patient;
+use App\Services\FileStorageService;
 
 class RadiologyController extends Controller
 {
+    protected FileStorageService $storage;
+
+    public function __construct(FileStorageService $storage)
+    {
+        $this->storage = $storage;
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -41,15 +49,20 @@ class RadiologyController extends Controller
             'service_id' => 'required|exists:services,id',
             'radiology_type' => 'required|string|max:255',
             'diagnosis' => 'nullable|string',
-            'image' => 'required|image|mimes:jpeg,png,jpg|max:10240',
+            'image' => 'required|image|max:10240',
         ]);
 
-        $imagePath = $request->file('image')->store('xrays', 'public');
-        $fullImagePath = storage_path('app/public/' . $imagePath);
+        // Upload image to S3 using FileStorageService (same pattern as UserController)
+        $imagePath = $this->storage->upload($request->file('image'), 'xrays', 'xray');
 
         try {
             $patient = Patient::findOrFail($request->patient_id);
             $age = $patient->age ?? 'Unknown';
+
+            // Read image and encode to base64 for Gemini API
+            $imageContent = file_get_contents($request->file('image')->getRealPath());
+            $base64Image = base64_encode($imageContent);
+            $mimeType = $request->file('image')->getMimeType(); // e.g. image/jpeg
 
             $prompt = "You are an experienced, board-certified dental and maxillofacial radiologist. Carefully and conservatively analyze a single panoramic dental X-ray image (OPG). Base your analysis ONLY on what is clearly and unambiguously visible; do NOT invent findings, fill gaps, or over-interpret subtle, noisy, or distorted areas.
                 GENERAL PRINCIPLES:
@@ -68,15 +81,42 @@ class RadiologyController extends Controller
                     4. Jaws and other anatomical structures (sinuses, canals, TMJs)
                     5. Summary and suggested further imaging/clinical correlation";
 
-            $result = Gemini::text()
-                ->model('gemini-3.5-flash') 
-                ->prompt($prompt)
-                ->upload('image', $fullImagePath)
-                ->temperature(0)
-                ->maxTokens(8192)
-                ->generate();
+            // Direct Gemini API call (bypassing library bug with ConnectionException)
+            $apiKey = config('gemini.api_key');
+            $model = 'gemini-2.5-flash';
 
-            $analysis = $result->content();
+            $response = Http::timeout(120)
+                ->connectTimeout(30)
+                ->retry(2, 2000)
+                ->post("https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apiKey}", [
+                    'contents' => [
+                        [
+                            'parts' => [
+                                ['text' => $prompt],
+                                [
+                                    'inline_data' => [
+                                        'mime_type' => $mimeType,
+                                        'data' => $base64Image,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'generationConfig' => [
+                        'temperature' => 0,
+                        'maxOutputTokens' => 8192,
+                    ],
+                ]);
+
+            if (!$response->successful()) {
+                throw new \Exception('Gemini API error: ' . ($response->json('error.message') ?? $response->body()));
+            }
+
+            $analysis = $response->json('candidates.0.content.parts.0.text', '');
+
+            if (empty($analysis)) {
+                throw new \Exception('Gemini returned an empty analysis.');
+            }
 
             $scan = \App\Models\Radiology\Radiology::create([
                 'patient_id' => $request->patient_id,
@@ -91,6 +131,8 @@ class RadiologyController extends Controller
             return redirect()->route('radiology.scans.show', $scan->id)->with('success', 'Scan created and analyzed successfully.');
 
         } catch (\Exception $e) {
+            // Clean up uploaded S3 file on failure
+            $this->storage->delete($imagePath);
             return back()->withInput()->withErrors(['error' => 'AI Analysis failed: ' . $e->getMessage()]);
         }
     }

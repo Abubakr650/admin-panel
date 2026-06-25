@@ -69,7 +69,7 @@
                             </h2>
                         </div>
                         <div class="bg-gray-900 p-4 flex items-center justify-center min-h-[300px]">
-                            <img src="{{ asset('storage/' . $scan->image_path) }}" alt="Dental X-Ray" class="max-h-[400px] w-auto object-contain rounded-lg shadow-2xl">
+                            <img src="{{ Storage::disk(config('filesystems.default', 's3'))->url($scan->image_path) }}" alt="Dental X-Ray" class="max-h-[400px] w-auto object-contain rounded-lg shadow-2xl">
                         </div>
                     </div>
                     @endif
