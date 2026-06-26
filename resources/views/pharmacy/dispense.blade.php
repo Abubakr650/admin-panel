@@ -54,6 +54,10 @@
         :extraParams="array_filter(['category' => request('category'), 'form' => request('form')])"
     />
 
+    @if(session('print_invoice_id'))
+        <iframe src="{{ route('pharmacy.dispense.print', session('print_invoice_id')) }}" style="display:none;" id="print-iframe"></iframe>
+    @endif
+
     <div class="flex gap-6" x-data="dispenseApp()">
         {{-- LEFT: Items Table --}}
         <div class="flex-1 min-w-0 space-y-4">

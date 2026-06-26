@@ -235,6 +235,19 @@ class PharmacyDispenseController extends Controller
             }
         }
 
-        return redirect()->route('pharmacy.dispense')->with('success', $msg);
+        return redirect()->route('pharmacy.dispense')->with([
+            'success' => $msg,
+            'print_invoice_id' => $invoice->id
+        ]);
+    }
+
+    /**
+     * Generate a thermal receipt for the dispense that auto-prints.
+     */
+    public function print(\App\Models\Billing\Invoice $invoice)
+    {
+        $invoice->load(['patient', 'doctor.user', 'currency', 'items.treatment.pharmacyBatch.pharmacyItem', 'payments']);
+
+        return view('pharmacy.receipt-html', compact('invoice'));
     }
 }

@@ -68,6 +68,7 @@ Route::middleware('auth')->group(function () {
     // Dispense (Pharmacy Sales)
     Route::get('pharmacy/dispense', [\App\Http\Controllers\Pharmacy\PharmacyDispenseController::class, 'index'])->name('pharmacy.dispense');
     Route::post('pharmacy/dispense', [\App\Http\Controllers\Pharmacy\PharmacyDispenseController::class, 'store'])->name('pharmacy.dispense.store');
+    Route::get('pharmacy/dispense/{invoice}/print', [\App\Http\Controllers\Pharmacy\PharmacyDispenseController::class, 'print'])->name('pharmacy.dispense.print');
     Route::get('api/patients/{patient}/invoices', [\App\Http\Controllers\Pharmacy\PharmacyDispenseController::class, 'patientInvoices'])->name('api.patient.invoices');
     // Warehouse
     Route::resource('pharmacy/warehouse', \App\Http\Controllers\Pharmacy\WarehouseItemController::class)->names('pharmacy.warehouse');
@@ -81,6 +82,11 @@ Route::middleware('auth')->group(function () {
     Route::put('/orthodontics/cases/{id}/restore', [\App\Http\Controllers\Orthodontics\OrthodonticCaseController::class, 'restore'])->name('orthodontics.cases.restore');
     Route::resource('orthodontics/sessions', \App\Http\Controllers\Orthodontics\OrthodonticSessionController::class)->names('orthodontics.sessions');
     Route::put('/orthodontics/sessions/{id}/restore', [\App\Http\Controllers\Orthodontics\OrthodonticSessionController::class, 'restore'])->name('orthodontics.sessions.restore');
+
+    // ─── Reports ──────────────────────────────────────────────────────────────
+    Route::prefix('reports')->name('reports.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Reports\ReportController::class, 'index'])->name('index');
+    });
 
 });
 
